@@ -76,9 +76,69 @@ const AIRecommendations = () => {
     }
   };
 
+  const genreMapping = {
+    Action: 28,
+    Comedy: 35,
+    Drama: 18,
+    Horror: 27,
+    Romance: 10749,
+    "Sci-Fi": 878,
+    Animation: 16,
+  };
+
+  const fetchTMDBFallback = async () => {
+    try {
+      const genreId = genreMapping[inputs.genre];
+      let releaseYearStart = "";
+      let releaseYearEnd = "";
+
+      if (inputs.decade === "2020s") {
+        releaseYearStart = "2020-01-01";
+        releaseYearEnd = "2029-12-31";
+      } else if (inputs.decade === "2010s") {
+        releaseYearStart = "2010-01-01";
+        releaseYearEnd = "2019-12-31";
+      } else if (inputs.decade === "2000s") {
+        releaseYearStart = "2000-01-01";
+        releaseYearEnd = "2009-12-31";
+      } else if (inputs.decade === "1990s") {
+        releaseYearStart = "1990-01-01";
+        releaseYearEnd = "1999-12-31";
+      } else {
+        releaseYearEnd = "1989-12-31";
+      }
+
+      const langCode = inputs.language === "English" ? "en" : inputs.language === "Spanish" ? "es" : inputs.language === "French" ? "fr" : inputs.language === "Korean" ? "ko" : "";
+
+      const TMDB_URL = `https://api.themoviedb.org/3/discover/movie?with_genres=${genreId}&primary_release_date.gte=${releaseYearStart}&primary_release_date.lte=${releaseYearEnd}${langCode ? `&with_original_language=${langCode}` : ""}&sort_by=popularity.desc`;
+
+      const tmdb_options = {
+        method: "GET",
+        headers: {
+          accept: "application/json",
+          Authorization: "Bearer eyJhbGciOiJIUzI1NiJ9.eyJhdWQiOiI5NTgzMDFlZGQ2MGEzN2Y3NDlmMzhlNGFmMTJjZDE3YSIsIm5iZiI6MTc0NTQxNjIyNS44NzY5OTk5LCJzdWIiOiI2ODA4ZjAyMTI3NmJmNjRlNDFhYjY0ZWUiLCJzY29wZXMiOlsiYXBpX3JlYWQiXSwidmVyc2lvbiI6MX0.NA_LMt6-MUBLAvxMRkZtBoUif4p9YQ6aYZo-lv4-PUE",
+        },
+      };
+
+      const response = await fetch(TMDB_URL, tmdb_options);
+      const data = await response.json();
+
+      if (data.results && data.results.length > 0) {
+        // Shuffle and take top 10
+        const titles = data.results.slice(0, 10).map(m => m.title);
+        return titles;
+      }
+      return null;
+    } catch (error) {
+      console.error("TMDB Fallback Error:", error);
+      return null;
+    }
+  };
+
   const generateRecommendations = async () => {
     if (!inputs) {
       toast("Please enter your inputs.");
+      return;
     }
 
     setIsLoading(true);
@@ -91,44 +151,44 @@ const AIRecommendations = () => {
 - Length: ${inputs.length}
 - Mood: ${inputs.mood}
 
-Recommend 10 ${inputs.mood.toLowerCase()} ${
-      inputs.language
-    }-language ${inputs.genre.toLowerCase()} movies released in the ${
-      inputs.decade
-    } with a runtime between ${
-      inputs.length
-    }. Return the list as plain JSON array of movie titles only, No extra text, no explanations, no code blocks, no markdown, just the JSON array.
-    example:
-[
-  "Movie Title 1",
-  "Movie Title 2",
-  "Movie Title 3",
-  "Movie Title 4",
-  "Movie Title 5",
-  "Movie Title 6",
-  "Movie Title 7",
-  "Movie Title 8",
-  "Movie Title 9",
-  "Movie Title 10"
-]`;
+Recommend 10 ${inputs.mood.toLowerCase()} ${inputs.language
+      }-language ${inputs.genre.toLowerCase()} movies released in the ${inputs.decade
+      } with a runtime between ${inputs.length
+      }. Return the list as plain JSON array of movie titles only, No extra text, no explanations, no code blocks, no markdown, just the JSON array.`;
 
-    const result = await getAIRecommendation(userPrompt);
+    try {
+      let result = await getAIRecommendation(userPrompt);
+      let recommendationArray = null;
 
-    setIsLoading(false);
-
-    if (result) {
-      const cleanedResult = result
-        .replace(/```json\n/i, "")
-        .replace(/\n```/i, "");
-      try {
-        const recommendationArray = JSON.parse(cleanedResult);
-        setRecommendation(recommendationArray);
-        console.log(recommendationArray);
-      } catch (error) {
-        console.log("Error: ", error);
+      if (result) {
+        const cleanedResult = result
+          .replace(/```json\n/i, "")
+          .replace(/\n```/i, "")
+          .trim();
+        try {
+          recommendationArray = JSON.parse(cleanedResult);
+        } catch (e) {
+          console.warn("AI JSON parse failed, trying fallback...");
+        }
       }
-    } else {
-      toast.error("Failed to get recommendations.");
+
+      // If AI fails or returns nothing, use TMDB Fallback
+      if (!recommendationArray || recommendationArray.length === 0) {
+        console.log("Using TMDB Fallback Mode...");
+        recommendationArray = await fetchTMDBFallback();
+      }
+
+      if (recommendationArray && recommendationArray.length > 0) {
+        setRecommendation(recommendationArray);
+        toast.success(result ? "Generated with AI!" : "Generated with TMDB Fallback!");
+      } else {
+        toast.error("Could not find any matching movies. Please try different options.");
+      }
+    } catch (error) {
+      console.error("Master Recommendation Error: ", error);
+      toast.error("Something went wrong!");
+    } finally {
+      setIsLoading(false);
     }
   };
   return (
@@ -175,11 +235,10 @@ Recommend 10 ${inputs.mood.toLowerCase()} ${
                   <button
                     key={opt}
                     onClick={() => handleOption(opt)}
-                    className={`w-full py-3 rounded-xl border-2 transition font-semibold text-base flex items-center justify-center gap-2 focus:outline-none focus:ring-2 active:scale-95 duration-150 focus:ring-[#e50914] shadow-sm ${
-                      inputs[steps[step].name] == opt
-                        ? "bg-[#e50914] border-[#e50914] text-white shadow-lg"
-                        : "bg-[#232323] border-[#444] text-white hover:bg-[#e50914]/80 hover:border-[#e50914]"
-                    }`}
+                    className={`w-full py-3 rounded-xl border-2 transition font-semibold text-base flex items-center justify-center gap-2 focus:outline-none focus:ring-2 active:scale-95 duration-150 focus:ring-[#e50914] shadow-sm ${inputs[steps[step].name] == opt
+                      ? "bg-[#e50914] border-[#e50914] text-white shadow-lg"
+                      : "bg-[#232323] border-[#444] text-white hover:bg-[#e50914]/80 hover:border-[#e50914]"
+                      }`}
                   >
                     {opt}
                   </button>
