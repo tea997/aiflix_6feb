@@ -4,7 +4,12 @@ import axios from "axios";
 axios.defaults.withCredentials = true;
 
 // Use environment variable for production, fallback to localhost for development
-const API_URL = import.meta.env.VITE_API_URL || "http://localhost:5000/api";
+let API_URL = import.meta.env.VITE_API_URL || "http://localhost:5000/api";
+
+// Ensure API_URL ends with /api to match backend routes
+if (API_URL && !API_URL.endsWith("/api")) {
+  API_URL = API_URL.endsWith("/") ? `${API_URL}api` : `${API_URL}/api`;
+}
 
 export const useAuthStore = create((set) => ({
   // initial states
