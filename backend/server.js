@@ -17,7 +17,10 @@ const PORT = process.env.PORT || 5000;
 
 app.use(express.json());
 app.use(cookieParser());
-app.use(cors({ origin: process.env.CLIENT_URL, credentials: true }))
+// Sanitize CLIENT_URL to remove trailing slashes which break CORS
+const origin = process.env.CLIENT_URL ? process.env.CLIENT_URL.replace(/\/$/, "") : "";
+
+app.use(cors({ origin: origin, credentials: true }));
 
 app.get("/", (req, res) => {
   res.send("Subscribe To My Channel!");
